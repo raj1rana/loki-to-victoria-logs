@@ -1,0 +1,13 @@
+{
+    "loki": {
+        "url": "http://localhost:3100",
+        "query": "{topic=\"iaas-database-auditlogs\"}",
+        "interval": "1m"
+    },
+    "victoria": {
+        "url": "http://localhost:8428",
+        "schema": "database_audit_logs"
+    },
+    "batchSize": 1000,
+    "timeWindow": "5m"
+}
