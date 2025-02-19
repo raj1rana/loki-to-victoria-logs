@@ -15,6 +15,10 @@ author = "agent"
 task = "workflow.run"
 args = "Log Pipeline"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build Pipeline"
+
 [[workflows.workflow]]
 name = "Log Pipeline"
 author = "agent"
@@ -28,6 +32,20 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "go run main.go"
+
+[[workflows.workflow]]
+name = "Build Pipeline"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "go build -o log-pipeline"
 
 [deployment]
 run = ["sh", "-c", "go run main.go"]

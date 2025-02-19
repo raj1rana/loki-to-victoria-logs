@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
 	"time"
 
 	"log-pipeline/config"
@@ -40,6 +41,24 @@ func main() {
 
 	// Initialize processor
 	proc := processor.NewProcessor(lokiClient, victoriaClient)
+
+	// Start health check server
+	go func() {
+		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			if err := healthChecker.CheckLokiHealth(cfg.Loki.URL); err != nil {
+				http.Error(w, "Loki health check failed", http.StatusServiceUnavailable)
+				return
+			}
+			if err := healthChecker.CheckVictoriaHealth(cfg.Victoria.URL); err != nil {
+				http.Error(w, "Victoria health check failed", http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Printf("Health check server error: %v", err)
+		}
+	}()
 
 	log.Printf("Starting log pipeline with query: %s", cfg.Loki.Query)
 	log.Printf("Time window: %v, Interval: %v", time.Duration(cfg.TimeWindow), time.Duration(cfg.Loki.Interval))
