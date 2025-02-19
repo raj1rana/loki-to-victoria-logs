@@ -1,30 +1,25 @@
-# Log Pipeline Utility
-
-A robust Go-based log pipeline utility designed for collecting, processing, and forwarding logs from Loki to Victoria Logs. This utility provides efficient log processing with features like deduplication, schema management, and resilient error handling.
-
-## Features
-
-- **Log Collection**: Collect logs from Loki using customizable queries
-- **Schema Management**: Dynamic schema support for Victoria Logs integration
-- **Deduplication**: Prevent duplicate log entries based on EventRecordID
-- **Resilient Processing**:
-  - Circuit breaker pattern to prevent cascading failures
-  - Exponential backoff retry mechanism
-  - Configurable retry attempts and timeouts
-- **Health Monitoring**: Built-in health checks for both Loki and Victoria services
-- **Structured Logging**: Comprehensive parsing and transformation of log data
-
-## Prerequisites
-
-- Go 1.19 or later
-- Access to Loki and Victoria Logs instances
-
-## Installation
-
-1. Clone the repository
-2. Install dependencies:
-```bash
 go mod download
+```
+3. Build the binary:
+```bash
+go build -o log-pipeline
+```
+
+### Using Docker
+
+1. Build the container:
+```bash
+docker build -t log-pipeline:latest .
+```
+
+2. Run the container:
+```bash
+docker run -d \
+  --name log-pipeline \
+  -e LOKI_URL="http://loki:3100" \
+  -e VICTORIA_URL="http://victoria:8428" \
+  -v $(pwd)/config.json:/app/config.json \
+  log-pipeline:latest
 ```
 
 ## Configuration
@@ -57,7 +52,7 @@ The utility can be configured through both a configuration file (`config.json`) 
 
 Run the utility with a custom configuration file:
 ```bash
-go run main.go -config /path/to/config.json
+./log-pipeline -config /path/to/config.json
 ```
 
 ## Schema
@@ -75,41 +70,3 @@ The utility uses a predefined schema for Victoria Logs:
         // ... other fields
     ]
 }
-```
-
-## Architecture
-
-### Components
-
-1. **Processor**: Core component handling log processing and deduplication
-2. **Loki Client**: Handles log collection with resilient error handling
-3. **Victoria Client**: Manages log forwarding with circuit breaker pattern
-4. **Health Checker**: Monitors service health and availability
-
-### Resilience Features
-
-#### Circuit Breaker
-- Prevents cascading failures
-- Configurable thresholds and timeouts
-- State change monitoring
-
-#### Retry Mechanism
-- Exponential backoff
-- Configurable max retries
-- Proper error logging
-
-## Monitoring
-
-The utility provides real-time statistics:
-- Number of processed logs
-- Error counts
-- Skipped (duplicate) entries
-- Circuit breaker state changes
-
-## License
-
-[Add your license information here]
-
-## Contributing
-
-[Add contribution guidelines here]
