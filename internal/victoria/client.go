@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
+	"log-pipeline/internal/resilience"
 )
 
 type Client struct {
@@ -13,28 +17,23 @@ type Client struct {
 	schema     string
 	httpClient *http.Client
 	maxRetries int
+	cb         *resilience.CircuitBreaker
 }
 
 func NewClient(baseURL, schema string) *Client {
 	return &Client{
-		baseURL:    baseURL,
-		schema:     schema,
+		baseURL: baseURL,
+		schema:  schema,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		maxRetries: 3,
+		cb:         resilience.NewCircuitBreaker("victoria-client"),
 	}
 }
 
 func (c *Client) SendLog(data map[string]interface{}) error {
-	var lastErr error
-	for retry := 0; retry <= c.maxRetries; retry++ {
-		if retry > 0 {
-			// Exponential backoff: 1s, 2s, 4s
-			backoffDuration := time.Duration(1<<uint(retry-1)) * time.Second
-			time.Sleep(backoffDuration)
-		}
-
+	operation := func() error {
 		// Add schema information
 		data["_schema"] = c.schema
 
@@ -44,27 +43,45 @@ func (c *Client) SendLog(data map[string]interface{}) error {
 		}
 
 		url := fmt.Sprintf("%s/write", c.baseURL)
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-		if err != nil {
-			return fmt.Errorf("failed to create request: %v", err)
-		}
 
-		req.Header.Set("Content-Type", "application/json")
+		// Execute request through circuit breaker
+		_, err = c.cb.Execute(func() (interface{}, error) {
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create request: %v", err)
+			}
 
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("attempt %d: %v", retry+1, err)
-			continue
-		}
-		defer resp.Body.Close()
+			req.Header.Set("Content-Type", "application/json")
 
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("attempt %d: server returned status %d", retry+1, resp.StatusCode)
-			continue
-		}
+			resp, err := c.httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
 
-		return nil
+			if resp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
+			}
+
+			return nil, nil
+		})
+
+		return err
 	}
 
-	return fmt.Errorf("failed after %d retries, last error: %v", c.maxRetries, lastErr)
+	// Create exponential backoff
+	b := backoff.NewExponentialBackOff()
+	b.MaxElapsedTime = 2 * time.Minute
+
+	err := backoff.RetryNotify(func() error {
+		return operation()
+	}, b, func(err error, duration time.Duration) {
+		log.Printf("Retrying Victoria log send after %v due to error: %v", duration, err)
+	})
+
+	if err != nil {
+		return fmt.Errorf("all retries failed: %v", err)
+	}
+
+	return nil
 }
